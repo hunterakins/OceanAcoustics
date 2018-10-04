@@ -3,6 +3,8 @@ import sys
 import cmath as m
 from matplotlib import pyplot as plt
 
+
+
 def square(x):
     return x*x
 
@@ -12,7 +14,7 @@ get the complex speed of sound given atten. coefficient alpha
 def complexC(cReal, Alpha):
     delta = Alpha / 54.58
     cImag = delta * cReal
-    return complex(cReal, cImag)
+    return complex(cReal, -1*cImag)
 
 
 ''' impedance of a material layer with attenuation coefficient alpha and density rho and sound speed c and angle theta
@@ -66,6 +68,7 @@ class SolidMedium(Medium):
         Zs = self.rho * self.c_shear / m.sin(theta_shear)
         Zp = self.rho * self.c / m.sin(theta_p)
         Z = Zp * square(m.cos(2*theta_shear)) + Zs * square(m.sin(2*theta_shear))
+        return Z
         
         
 
@@ -81,16 +84,28 @@ class Ray:
         snell = self.snell_constant
         if type(new_medium) is SolidMedium:
             c = new_medium.c_shear
+            c2 = new_medium.c
+            angle_shear = m.acos(c * snell)
+            angle_p = m.acos(c2*snell)
+            return angle_shear, angle_p
         else:
             c = new_medium.c
         angle = m.acos(c * snell)
         return angle
 
+class RaySet:
+    def __init__(self, num_angles, freq, medium, A):
+        self.rays = []
+        for angle in np.linspace(0, m.pi /2, num_angles):
+            self.rays.append(Ray(freq, medium, A, angle))
+
+        
+
 def RfromZ(Z1, Z2):
     return (Z2 - Z1)/(Z2+Z1)
 
 
-class LayeredBottomInteraction:
+class ThreeLayerFluidInteraction:
     def __init__(self, incidentRay, medium2, medium3):
         self.incidentRay = incidentRay
         self.medium2 = medium2
@@ -102,6 +117,8 @@ class LayeredBottomInteraction:
         med2 = self.medium2
         med3 = self.medium3
         theta1 = primaryRay.theta
+        if theta1 == 0:
+            return 1
         theta2 = primaryRay.getRefractedAngle(med2)
         R12 = RfromZ(med1.getZ(theta1), med2.getZ(theta2))
         secondaryA = primaryRay.A * R12
@@ -116,7 +133,6 @@ class LayeredBottomInteraction:
         Z2 = med2.getZ(theta2)
         Z3 = med3.getZ(theta3)
 
-        print("Z1, Z2, Z3: ", ",".join([str(x) for x in [Z1, Z2, Z3]]))
 
         thickness = med2.thickness
         c = med2.c
@@ -126,6 +142,31 @@ class LayeredBottomInteraction:
         RCoeff_den = complex(Z2*(Z3 + Z1), -(square(Z2) + Z1*Z3)*m.tan(phi))
         RCoeff = RCoeff_num / RCoeff_den
         return RCoeff
+
+
+
+class TwoLayerInteraction:
+    def __init__(self, incidentRay, medium2):
+        self.incidentRay = incidentRay
+        self.medium1 = self.incidentRay.medium
+        self.medium2 = medium2
+
+
+    def getRCoeff(self):
+        theta1 = self.incidentRay.theta
+        if (theta1 == 0):
+            return 1
+        if type(self.medium2) is SolidMedium:
+            theta_s, theta_P = self.incidentRay.getRefractedAngle(self.medium2)
+            Z2 = self.medium2.getZ(theta_s, theta_P)
+        else:
+            theta2 = self.incidentRay.getRefractedAngle(self.medium2) 
+            Z2 = self.medium2.getZ(theta2)
+        Z1 = self.medium1.getZ(theta1)
+        ret  = RfromZ(Z1, Z2)
+        return ret
+        
+
 
 ''' function to compute the reflectivity coefficient for a given solid layer in terms of
 the solid layer shear wave speed, compression wvae speed, p-attenuation, s-attenuation, and medium density
